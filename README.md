@@ -47,7 +47,6 @@ chmod +x cleanup_logs.sh
 Chargement des informations du tableau d'origine, fond d'écran, listes, cartes, labels, commentaires et checklist
 load_TrelloBoard.py 
 
-**Définir les variables**
 ![Définition des variables](assets/images/init_load_TrelloBoard.png)
 
 **Donner les droits d'exécution** 
@@ -58,6 +57,5 @@ python load_TrelloBoard.py trelloBoardName
 
 ![Résultat de l'exécution du chargement](assets/images/execute_load_TrelloBoard.png)
 
-**Exemple de résultat** 
 ![Résultat de l'import](assets/images/TrelloBoards.png)
 ![Contenu du tableau importé](assets/images/ImportedTrello.png)
