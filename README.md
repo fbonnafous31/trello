@@ -35,13 +35,15 @@ crontab -l
 ![Exemple de cron](assets/images/cron.png)
 
 ## Création d'un shell Linux pour supprimer les sauvegardes anciennes
-cleanup_logs.sh
+cleanup_TrelloBackup.sh
 
 **Donner les droits d'exécution** 
-chmod +x cleanup_logs.sh
+chmod +x cleanup_TrelloBackup.sh
 
 **Lancement** 
-./cleanup_logs.sh
+./cleanup_TrelloBackup.sh
+
+![Exemple de cron](assets/images/clean_TrelloBackup.png)
 
 ## Créer d'un script Python pour créer un tableau Trello à partir d'une sauvegarde JSON
 Chargement des informations du tableau d'origine, fond d'écran, listes, cartes, labels, commentaires et checklist
