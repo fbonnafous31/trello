@@ -5,7 +5,7 @@ import os
 import urllib.parse
 
 # Chemin de base ou se trouvent vos fichiers JSON
-base_path = # Chemin vers le repertoire de sauvegarde
+base_path = '/tmp/fbs/backup'
 
 # Configuration de l'analyseur d'arguments
 parser = argparse.ArgumentParser(description="Recreer un tableau Trello a partir d'une sauvegarde JSON.")
@@ -17,8 +17,8 @@ args = parser.parse_args()
 json_path = os.path.join(base_path, args.json_file)
 
 # Votre cle API et votre token Trello
-api_key =   # Clé d'API Trello (https://trello.com/power-ups/admin)
-token =     # Token Trello
+api_key = os.getenv('FB_TRELLO_API_KEY')
+token = os.getenv('FB_TRELLO_API_TOKEN')
 
 if not api_key or not token:
     raise ValueError("Les cles API ou le token sont manquants.")
@@ -46,18 +46,6 @@ try:
 except json.JSONDecodeError:
     print(f"Erreur de decodage JSON lors de la creation du tableau : {response_create_board.text}")
     raise
-
-# Recuperer le fond d'ecran du tableau d'origine
-if 'prefs' in data and 'background' in data['prefs']:
-    background_url = data['prefs']['background']
-    if background_url:
-        url_set_background = f"https://api.trello.com/1/boards/{new_board_id}/prefs/background?key={api_key}&token={token}&value={background_url}"
-        response_set_background = requests.put(url_set_background)
-
-        # Verifier si la reponse est correcte avant de continuer
-        if response_set_background.status_code != 200:
-            print(f"Erreur lors du reglage du fond d'ecran : {response_set_background.status_code} - {response_set_background.text}")
-            response_set_background.raise_for_status()
 
 # Recuperer les listes par defaut du nouveau tableau
 url_get_lists = f"https://api.trello.com/1/boards/{new_board_id}/lists?key={api_key}&token={token}"
@@ -108,10 +96,21 @@ for lst in sorted_lists:
         new_list_id = response_data['id']
         list_id_map[lst['id']] = new_list_id
 
+# Fonction pour valider la couleur de l'etiquette
+def is_valid_color(color):
+    valid_colors = ['green', 'yellow', 'red', 'purple', 'blue', 'orange', 'sky', 'lime', 'pink', 'black', 'white']
+    return color in valid_colors
+
 # Creer les etiquettes dans le nouveau tableau
 label_id_map = {}
 for label in data['labels']:
-    url_create_label = f"https://api.trello.com/1/labels?name={urllib.parse.quote(label['name'])}&color={label['color']}&idBoard={new_board_id}&key={api_key}&token={token}"
+    color = label['color']
+    # Si la couleur de l'etiquette est invalide, remplacer par une couleur par defaut
+    if not is_valid_color(color):
+        print(f"Couleur invalide pour l'etiquette '{label['name']}'. Utilisation de 'green' par defaut.")
+        color = 'green'
+
+    url_create_label = f"https://api.trello.com/1/labels?name={urllib.parse.quote(label['name'])}&color={color}&idBoard={new_board_id}&key={api_key}&token={token}"
     response_create_label = requests.post(url_create_label)
     
     # Verifier si la reponse est correcte avant de continuer
@@ -177,34 +176,28 @@ for card in data['cards']:
                     # Ajouter les items de la checklist
                     for item in checklist['checkItems']:
                         checked_value = "true" if item['state'] == 'complete' else "false"
-                        url_create_checkitem = f"https://api.trello.com/1/checklists/{new_checklist_id}/checkItems?name={urllib.parse.quote(item['name'])}&pos={item['pos']}&checked={checked_value}&key={api_key}&token={token}"
+                        url_create_checkitem = f"https://api.trello.com/1/checklists/{new_checklist_id}/checkItems?name={urllib.parse.quote(item['name'])}&checked={checked_value}&key={api_key}&token={token}"
                         response_create_checkitem = requests.post(url_create_checkitem)
                         
                         # Verifier si la reponse est correcte avant de continuer
                         if response_create_checkitem.status_code != 200:
-                            print(f"Erreur lors de la creation de l'item de checklist : {response_create_checkitem.status_code} - {response_create_checkitem.text}")
+                            print(f"Erreur lors de la creation de l'item de la checklist : {response_create_checkitem.status_code} - {response_create_checkitem.text}")
                             response_create_checkitem.raise_for_status()
 
-            # Ajouter les commentaires a la carte si des actions existent
-            if 'actions' in card:
-                for action in card['actions']:
-                    if action['type'] == 'commentCard' and 'data' in action and 'text' in action['data']:
-                        url_create_comment = f"https://api.trello.com/1/cards/{new_card_id}/actions/comments?text={urllib.parse.quote(action['data']['text'])}&key={api_key}&token={token}"
-                        response_create_comment = requests.post(url_create_comment)
-                        if response_create_comment.status_code != 200:
-                            print(f"Erreur lors de la creation du commentaire : {response_create_comment.status_code} - {response_create_comment.text}")
-                            response_create_comment.raise_for_status()
+# Ajouter les commentaires aux cartes si presents dans les actions
+for card in data['cards']:
+    new_card_id = card_id_map.get(card['id'])
+    if new_card_id:
+        for action in card['actions']:
+            if action.get('type') == 'commentCard':
+                comment = action.get('data', {}).get('text', '')
+                if comment:
+                    url_add_comment = f"https://api.trello.com/1/cards/{new_card_id}/actions/comments?text={urllib.parse.quote(comment)}&key={api_key}&token={token}"
+                    response_add_comment = requests.post(url_add_comment)
+                    
+                    # Verifier si la reponse est correcte avant de continuer
+                    if response_add_comment.status_code != 200:
+                        print(f"Erreur lors de l'ajout du commentaire : {response_add_comment.status_code} - {response_add_comment.text}")
+                        response_add_comment.raise_for_status()
 
-            # Ajouter les etiquettes a la carte
-            if 'idLabels' in card:
-                for old_label_id in card['idLabels']:
-                    new_label_id = label_id_map.get(old_label_id)
-                    if new_label_id:
-                        url_add_label = f"https://api.trello.com/1/cards/{new_card_id}/idLabels?value={new_label_id}&key={api_key}&token={token}"
-                        response_add_label = requests.post(url_add_label)
-                        if response_add_label.status_code != 200:
-                            print(f"Erreur lors de l'ajout de l'etiquette a la carte : {response_add_label.status_code} - {response_add_label.text}")
-                            response_add_label.raise_for_status()
-
-print(f"Le tableau '{new_board_name}' a ete recree avec succes.")
-print(f"Le tableau recree est accessible a l'URL : https://trello.com/b/{new_board_id}")
+print(f"Le tableau '{new_board_name}' a ete cree avec succes et les donnees ont ete importe.")
