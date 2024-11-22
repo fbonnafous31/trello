@@ -46,6 +46,32 @@ try:
 except json.JSONDecodeError:
     print(f"Erreur de decodage JSON lors de la creation du tableau : {response_create_board.text}")
     raise
+    
+# Appliquer le background au nouveau tableau
+background = data.get('prefs', {}).get('background', None)
+if background:
+    url_set_background = f"https://api.trello.com/1/boards/{new_board_id}/prefs/background?value={urllib.parse.quote(background)}&key={api_key}&token={token}"
+    response_set_background = requests.put(url_set_background)
+    
+    if response_set_background.status_code != 200:
+        print(f"Erreur lors de la configuration du background : {response_set_background.status_code} - {response_set_background.text}")
+        response_set_background.raise_for_status()
+    else:
+        print(f"Background du tableau defini sur '{background}'.")
+else:
+    print("Aucun background trouve dans la sauvegarde. Utilisation du background par defaut.")
+
+# Background image
+if background and background.startswith("http"):
+    url_upload_background = f"https://api.trello.com/1/boards/{new_board_id}/boardBackgrounds?key={api_key}&token={token}"
+    files = {'file': ('background.jpg', requests.get(background).content)}
+    response_upload_background = requests.post(url_upload_background, files=files)
+    
+    if response_upload_background.status_code != 200:
+        print(f"Erreur lors de l'upload de l'image de background : {response_upload_background.status_code} - {response_upload_background.text}")
+        response_upload_background.raise_for_status()
+    else:
+        print("Image de background uploadee avec succes.")             
 
 # Recuperer les listes par defaut du nouveau tableau
 url_get_lists = f"https://api.trello.com/1/boards/{new_board_id}/lists?key={api_key}&token={token}"
@@ -135,8 +161,34 @@ for card in data['cards']:
         old_list_id = card['idList']
         new_list_id = list_id_map.get(old_list_id)
         if new_list_id:
-            url_create_card = f"https://api.trello.com/1/cards?idList={new_list_id}&name={urllib.parse.quote(card['name'])}&desc={urllib.parse.quote(card.get('desc', ''))}&key={api_key}&token={token}"
+            due_date = card.get('due', None)
+            url_create_card = (
+                f"https://api.trello.com/1/cards?"
+                f"idList={new_list_id}"
+                f"&name={urllib.parse.quote(card['name'])}"
+                f"&desc={urllib.parse.quote(card.get('desc', ''))}"
+                f"&due={urllib.parse.quote(due_date) if due_date else ''}"
+                f"&key={api_key}&token={token}"
+            )            
             response_create_card = requests.post(url_create_card)
+
+            if response_create_card.status_code == 200:
+                created_card = response_create_card.json()
+                card_id = created_card['id']
+                print(f"Carte '{card['name']}' creee avec succes.")
+            
+                # Marquer la date comme complete
+                if due_date:  # Si une date existe
+                    url_update_due_complete = f"https://api.trello.com/1/cards/{card_id}?key={api_key}&token={token}"
+                    payload = {'dueComplete': 'true'}  # Indique que la date est cochee
+                    response_update_due = requests.put(url_update_due_complete, params=payload)
+            
+                    if response_update_due.status_code == 200:
+                        print(f"Date pour la carte '{card['name']}' marquee comme complete.")
+                    else:
+                        print(f"Erreur lors de la mise a jour de la date de la carte '{card['name']}': {response_update_due.text}")
+            else:
+                print(f"Erreur lors de la creation de la carte '{card['name']}': {response_create_card.text}")
             
             # Verifier si la reponse est correcte avant de continuer
             if response_create_card.status_code != 200:
@@ -183,7 +235,7 @@ for card in data['cards']:
                         if response_create_checkitem.status_code != 200:
                             print(f"Erreur lors de la creation de l'item de la checklist : {response_create_checkitem.status_code} - {response_create_checkitem.text}")
                             response_create_checkitem.raise_for_status()
-
+                            
 # Ajouter les commentaires aux cartes si presents dans les actions
 for card in data['cards']:
     new_card_id = card_id_map.get(card['id'])
