@@ -122,38 +122,6 @@ for lst in sorted_lists:
         new_list_id = response_data['id']
         list_id_map[lst['id']] = new_list_id
 
-# Fonction pour valider la couleur de l'etiquette
-def is_valid_color(color):
-    valid_colors = ['green', 'yellow', 'red', 'purple', 'blue', 'orange', 'sky', 'lime', 'pink', 'black', 'white']
-    return color in valid_colors
-
-# Creer les etiquettes dans le nouveau tableau
-label_id_map = {}
-for label in data['labels']:
-    color = label['color']
-    # Si la couleur de l'etiquette est invalide, remplacer par une couleur par defaut
-    if not is_valid_color(color):
-        print(f"Couleur invalide pour l'etiquette '{label['name']}'. Utilisation de 'green' par defaut.")
-        color = 'green'
-
-    url_create_label = f"https://api.trello.com/1/labels?name={urllib.parse.quote(label['name'])}&color={color}&idBoard={new_board_id}&key={api_key}&token={token}"
-    response_create_label = requests.post(url_create_label)
-    
-    # Verifier si la reponse est correcte avant de continuer
-    if response_create_label.status_code != 200:
-        print(f"Erreur lors de la creation de l'etiquette : {response_create_label.status_code} - {response_create_label.text}")
-        response_create_label.raise_for_status()
-    
-    # Verifier si la reponse contient du JSON valide
-    try:
-        response_data = response_create_label.json()
-    except json.JSONDecodeError:
-        print(f"Erreur de decodage JSON lors de la creation de l'etiquette : {response_create_label.text}")
-        raise
-
-    new_label_id = response_data['id']
-    label_id_map[label['id']] = new_label_id
-
 # Creer les cartes dans chaque liste
 card_id_map = {}
 for card in data['cards']:
@@ -177,6 +145,17 @@ for card in data['cards']:
                 card_id = created_card['id']
                 print(f"Carte '{card['name']}' creee avec succes.")
             
+                # Ajouter les etiquettes aux cartes
+                for label in card.get('labels', []):
+                    url_add_label = f"https://api.trello.com/1/cards/{card_id}/labels?color={label['color']}&name={urllib.parse.quote(label['name'])}&key={api_key}&token={token}"
+                    response_add_label = requests.post(url_add_label)
+                    
+                    if response_add_label.status_code == 200:
+                        print(f"Etiquette '{label['name']}' ajoutee avec succes a la carte '{card['name']}'.")
+                    else:
+                        print(f"Erreur lors de l'ajout de l'etiquette '{label['name']}' a la carte '{card['name']}': {response_add_label.text}")
+                        break  # Ne pas ajouter d'autres etiquettes en cas de probleme
+                                    
                 # Marquer la date comme complete
                 if due_date:  # Si une date existe
                     url_update_due_complete = f"https://api.trello.com/1/cards/{card_id}?key={api_key}&token={token}"
@@ -251,5 +230,18 @@ for card in data['cards']:
                     if response_add_comment.status_code != 200:
                         print(f"Erreur lors de l'ajout du commentaire : {response_add_comment.status_code} - {response_add_comment.text}")
                         response_add_comment.raise_for_status()
+
+# Ajouter les pieces jointes aux cartes si presentes
+for card in data['cards']:
+    new_card_id = card_id_map.get(card['id'])
+    if new_card_id:
+        for attachment in card.get('attachments', []):
+            url_add_attachment = f"https://api.trello.com/1/cards/{new_card_id}/attachments?url={urllib.parse.quote(attachment['url'])}&name={urllib.parse.quote(attachment['name'])}&key={api_key}&token={token}"
+            response_add_attachment = requests.post(url_add_attachment)
+            
+            # Verifier si la reponse est correcte avant de continuer
+            if response_add_attachment.status_code != 200:
+                print(f"Erreur lors de l'ajout de la piece jointe : {response_add_attachment.status_code} - {response_add_attachment.text}")
+                response_add_attachment.raise_for_status()                        
 
 print(f"Le tableau '{new_board_name}' a ete cree avec succes et les donnees ont ete importe.")
